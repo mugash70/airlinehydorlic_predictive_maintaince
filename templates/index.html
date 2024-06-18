@@ -1,0 +1,232 @@
+{% include 'nav.html' %}
+<style>
+    .spinner {
+        display: none; /* Hide spinner by default */
+        width: 8rem; /* Increase spinner size */
+        height: 8rem; 
+    }
+</style>
+<div class="container mt-4">
+  
+        <div class="row mb-4">
+                <div class="card shadow  h-100" style="padding: 3%;">
+                    <div class="card-body">
+                        <div class="row">
+                        <div class="col mb-4">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <label for="datasetSelect" class="form-label">Dataset:</label>
+                                    <select class="form-select" id="datasetSelect" onchange="getSensor(this.value)" style="height: 3rem;">
+                                        <option selected disabled>select a dataset</option>
+                                        {% for item in x_datasets %}
+                                            <option  value="{{ item.filename }}" >{{ item.filename }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col mb-4">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <label for="sensorSelect" class="form-label">Select target:</label>
+                                    <select class="form-select" id="sensorSelect" style="height: 3rem;">
+                                        <!-- <option selected disabled>Select a sensor</option> -->
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col mb-4">
+                            <div class="row align-items-center">
+                                <div class="col">
+                                    <label for="modelsSelect" class="form-label">Pre-trained Models:</label>
+                                    <select class="form-select" id="modelsSelect"  style="height: 3rem;">
+                                        <!-- <option selected disabled>Select a sensor</option> -->
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- <button class="btn btn-primary" onclick=" Train_modal(filename,sensor)">Train</button> -->
+                        <div class="row justify-content-around">
+                        <button class="btn btn-danger col-4" onclick="Train_modal(document.getElementById('datasetSelect').value, document.getElementById('sensorSelect').value)">Train</button>
+                        <button class="btn btn-dark col-4" onclick="start_predict_modal(document.getElementById('modelsSelect').value, document.getElementById('sensorSelect').value)">Predict</button>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+    
+            <div class="row mb-4">
+                <div class="card shadow  h-100">
+                    <div class="card-body">
+                            <h5 class="card-title text-center mb-4">Progress</h5>
+                            <div class="d-flex justify-content-center align-items-center">   
+                                <div class="ms-3">
+
+                                <div class="mb-3" style="display:none;" id="upload_pred">
+                                    <form id="uploadForm" enctype="multipart/form-data">
+                                        <input class="form-control form-control-lg" class="form-control form-control-lg" type="file" id="fileInput" name="fileInput" accept=".xlsx">
+                                        <br/>
+                                        <button class="btn btn-dark col-6 mx-auto" type="button" onclick="uploadFile()">Upload</button>
+                                    </form>
+                                </div>
+
+                                    <div id="spinner" style="display:none;">
+                                        <!-- margin-left: 20%; -->
+                                        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+                                    </div>
+                                    <br/>
+                                    <div id="progress" class="mb-4"></div>
+                                </div>
+                            </div>
+                </div>
+                </div>
+            </div>
+
+
+            <div class="row mb-4">
+                <div class="card shadow  h-100" style="padding: 10%;">
+                    <div class="card-body">
+                        <h5 class="card-title">Upload new Dataset</h5>
+                        <p class="card-text">This is some text within a card body.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="card shadow  h-100" style="padding: 10%;">
+                    <div class="card-body">
+                        <h5 class="card-title">Card Title 5</h5>
+                        <p class="card-text">This is some text within a card body.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="card shadow  h-100" style="padding: 10%;">
+                    <div class="card-body">
+                        <h5 class="card-title">Card Title 6</h5>
+                        <p class="card-text">This is some text within a card body.</p>
+                    </div>
+                </div>
+            </div>
+  </div>
+</div>
+
+<script>
+
+function uploadFile() {
+    var modelsSelect = document.getElementById("modelsSelect");
+    var selectedModel = modelsSelect.value;
+    
+    var fileInput = document.getElementById('fileInput');
+    var file = fileInput.files[0];
+    var fileInput = document.getElementById('fileInput');
+            var file = fileInput.files[0];
+
+            if (file) {
+                var formData = new FormData();
+                formData.append('file', file);
+                formData.append('selectedModel', selectedModel);
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('File uploaded:', data.filename);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            } else {
+                alert("Please select a file.");
+            }
+}
+
+function start_predict_modal(){
+    var modelsSelect = document.getElementById("modelsSelect");
+
+    if (modelsSelect && modelsSelect.value !== "") {
+        document.getElementById("upload_pred").style.display = "block";
+    } else {
+        document.getElementById("progress").innerText = "No model Selected";
+    }
+}
+
+
+function Train_modal(filename, sensor) {
+    document.getElementById("spinner").style.display = "block";
+    document.getElementById("progress").innerText = "Training ...";
+    var datasetSelect = encodeURIComponent(filename);
+    var sensorSelect = encodeURIComponent(sensor);
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "/", true);
+    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === XMLHttpRequest.DONE) {
+            if (xhr.status === 200) {
+                document.getElementById("progress").innerText = "Training completed.";
+            } else {
+                document.getElementById("progress").innerText = "Error during training.";
+            }
+            document.getElementById("spinner").style.display = "none";
+            getSensor(datasetSelect)
+        } else {
+            if (xhr.status === 202 && xhr.responseText) {
+                var progressUpdate = xhr.responseText;
+                document.getElementById("progress").innerText = progressUpdate;
+            }
+        }
+    };
+
+    // Send request to start training
+    xhr.send(`datasetSelect=${datasetSelect}&sensorSelect=${sensorSelect}&training=true`);
+}
+
+    function getSensor(filename) {
+        document.getElementById("progress").innerText =''
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "/", true);
+        xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState == XMLHttpRequest.DONE && xhr.status == 200) {
+                var response = JSON.parse(xhr.responseText);
+                var sensorsColumns  = response.sensors.columns;
+                var modelsColumns  = response.models;
+                
+                populateSensorSelect(sensorsColumns,"sensorSelect");
+                populateSensorSelect(modelsColumns ,"modelsSelect");
+            }
+        };
+        var data = "datasetSelect=" + encodeURIComponent(filename);
+        xhr.send(data);
+    }
+    function populateSensorSelect(columns,which_1) {
+        var sensorSelect = document.getElementById(which_1);
+        sensorSelect.innerHTML = ""; 
+        var defaultOption = document.createElement("option")
+        
+        defaultOption.disabled = true;
+        defaultOption.selected = true;
+        sensorSelect.appendChild(defaultOption);
+        if(which_1=="sensorSelect"){
+            defaultOption.text = "Select a target";
+        columns.forEach(function(column) { 
+            var option = document.createElement("option"); 
+            option.value = column;
+            option.text = column;
+            sensorSelect.appendChild(option);
+        });
+            }else if (which_1=="modelsSelect"){
+                defaultOption.text = "Select a model";
+                columns.forEach(function(column) { 
+                    var option = document.createElement("option"); 
+                    option.value = column.path;
+                    var file=column.file
+                    var trimmedFilename = file.substring(file.indexOf("_") + 1);
+                    option.text = trimmedFilename;
+                    sensorSelect.appendChild(option);
+                });
+            }
+    }
+</script>
+{% include 'footer.html' %}
