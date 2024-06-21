@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 import seaborn as sns
 from sklearn.metrics import precision_score, recall_score, f1_score
 from keras.models import load_model
-
+import re
 from flask import  jsonify
 plt.style.use('ggplot')
 import os
@@ -50,25 +50,23 @@ def process_and_append_datasets(data, directory, df,target_col,target_file=None,
         df = pd.concat([df, df_temp], axis=1)
     return df
 
-def generate_sequences(df, seq_length, seq_cols):
-    sequences = []
-    for id_val in df['id'].unique():
-        id_df = df[df['id'] == id_val]
-        if len(id_df) < seq_length:
-            padding = pd.DataFrame(np.zeros((seq_length - len(id_df), len(seq_cols))), columns=seq_cols)
-            id_df = pd.concat([padding, id_df], ignore_index=True)
-        data_array = id_df[seq_cols].values
-        for start in range(len(id_df) - seq_length + 1):
-            sequences.append(data_array[start:start + seq_length])
-    return np.array(sequences)
+def gen_sequence(id_df, seq_length, seq_cols):
+    df_zeros = pd.DataFrame(np.zeros((seq_length - 1, len(id_df.columns))), columns=id_df.columns)
+    id_df = pd.concat([df_zeros, id_df], ignore_index=True)
+    data_array = id_df[seq_cols].values
+    num_elements = data_array.shape[0]
+    lstm_array = []
+    for start, stop in zip(range(0, num_elements - seq_length), range(seq_length, num_elements)):
+        lstm_array.append(data_array[start:stop, :])
+    return np.array(lstm_array)
 
 def gen_label(id_df, seq_length, seq_cols, label):
-    df_zeros = pd.DataFrame(np.zeros((seq_length-1, id_df.shape[1])), columns=id_df.columns)
+    df_zeros = pd.DataFrame(np.zeros((seq_length - 1, len(id_df.columns))), columns=id_df.columns)
     id_df = pd.concat([df_zeros, id_df], ignore_index=True)
     data_array = id_df[seq_cols].values
     num_elements = data_array.shape[0]
     y_label = []
-    for start, stop in zip(range(0, num_elements-seq_length), range(seq_length, num_elements)):
+    for stop in range(seq_length, num_elements):
         y_label.append(id_df[label].iloc[stop])
     return np.array(y_label)
 
@@ -77,29 +75,21 @@ def gen_label(id_df, seq_length, seq_cols, label):
 def main (filename,target):
     base_directory = r"C:\Users\Administrator\Desktop\frontend\static\datasets"
     directory = os.path.join(base_directory, filename)
-    # print(directory)
-    # df = pd.DataFrame(directory)
     df = pd.read_excel(directory)
-    # features_col_name = ["PS1", "PS2", "PS3", "PS4", "PS5", "PS6","EPS1","FS1", "FS2","TS1", "TS2", "TS3", "TS4","VS1","CE", "CP","SE"]
-    target_col_name=["Cooler_Condition", "Valve_Condition", "Internal_Pump_Leakage", "Hydraulic_Accumulator", "Stable_Flag"]
-   
-    # data = load_and_process_datasets(features_col_name, directory, axis=1)
-    # df = process_and_append_datasets(data, directory, df,target_col_name,target_file ="profile")
-
     window_size = 96
     scaler = MinMaxScaler()
-    features_normalized =df.drop(columns=target_col_name)
-    labels = df[target].values
-    sequences = []
-    next_labels = []
-    for i in range(len(features_normalized) - window_size):
-        sequence = features_normalized[i:i + window_size]
-        label = labels[i + window_size]
-        sequences.append(sequence)
-        next_labels.append(label)
-    X = np.array(sequences)
-    y = np.array(next_labels)
-    X = np.reshape(X, (X.shape[0], window_size, X.shape[2]))
+    features_col_name =features_col_name = df.columns.difference([target])  
+    target_col_name= target
+    df[features_col_name]=scaler.fit_transform(df[features_col_name])
+    if 'id' not in df.columns:
+        df['id'] = range(1, len(df) + 1)
+
+    df_x = [gen_sequence(df[df['id'] == id], window_size, features_col_name) for id in df['id'].unique()]
+    X = np.concatenate(df_x, axis=0)
+
+    df_y = [gen_label(df[df['id'] == id], window_size, features_col_name, target_col_name) for id in df['id'].unique()]
+    y = np.concatenate(df_y, axis=0)
+
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     # Define the LSTM model
     model = Sequential()
@@ -108,8 +98,10 @@ def main (filename,target):
     model.add(LSTM(  units=50,return_sequences=False))
     model.add(Dropout(0.2))
     model.add(Dense(units=1, activation='sigmoid'))
-    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-    model.fit(X_train, y_train, epochs=100, batch_size=100, validation_split=0.05, verbose=1,callbacks=[EarlyStopping(monitor='val_loss', min_delta=0, patience=0, verbose=0, mode='auto')])
+    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy','mse','mae'])
+    model.fit(X_train, y_train, epochs=10, batch_size=200, validation_split=0.05, verbose=1,
+              callbacks=[EarlyStopping(monitor='val_loss', min_delta=0, patience=0, verbose=0, mode='auto')])
+    
     scores = model.evaluate(X_train, y_train, verbose=1, batch_size=200)
     base_directory = r"C:\Users\Administrator\Desktop\frontend\static\models"
 
@@ -119,48 +111,41 @@ def main (filename,target):
     y_pred_prob = model.predict(X_test)
     y_pred = (y_pred_prob > 0.5).astype(int)
 
-    # conf_matrix = confusion_matrix(y_test, y_pred)
-    # plt.figure(figsize=(8, 6))
-    # sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', cbar=False)
-    # plt.title('Confusion Matrix')
-    # plt.xlabel('Predicted Labels')
-    # plt.ylabel('True Labels')
-    # plt.show()
-    return jsonify({
-            'df': {
-                'y_test': y_test.tolist(),  # Convert tolist() if y_test is a numpy array
-                'y_pred': y_pred.tolist(),  # Convert tolist() if y_pred is a numpy array
-                'X_train': X_train.tolist(),  # Convert tolist() if X_train is a numpy array
-                'y_train': y_train.tolist()  # Convert tolist() if y_train is a numpy array
-            },
-            'accuracy_train': format(scores[1], '.4f'),  # Format accuracy_train to 4 decimal places
-            'accuracy_test': accuracy_score(y_test, y_pred)
-        })
-    # return jsonify({'df':{'y_test':y_test,'y_pred':y_pred,'X_train':X_train,'y_train':y_train}accuracy_train':format(scores[1]),'accuracy_test': accuracy_score(y_test, y_pred)})
+    # return jsonify({
+    #         'df': {
+    #             'y_test': y_test.tolist(),  # Convert tolist() if y_test is a numpy array
+    #             'y_pred': y_pred.tolist(),  # Convert tolist() if y_pred is a numpy array
+    #             'X_train': X_train.tolist(),  # Convert tolist() if X_train is a numpy array
+    #             'y_train': y_train.tolist()  # Convert tolist() if y_train is a numpy array
+    #         },
+    #         'accuracy_train': format(scores[1], '.4f'),  # Format accuracy_train to 4 decimal places
+    #         'accuracy_test': accuracy_score(y_test, y_pred)
+    #     })
+    return y_test,y_pred, format(scores[1], '.4f'),accuracy_score(y_test, y_pred)
 
-# x = main ('original.xlsx','Stable_Flag')
-# print(x)
-
-def predict_code(df,modelfile):
+def predict_code(df_test, modelfile):
+    normalized_path = os.path.normpath(modelfile)
+    model = load_model(normalized_path)
     pattern = r'^.*_lstm_model_|\.keras$'
-    specif_target = re.sub(pattern, '', filename)
-    target_col_name=["Cooler_Condition", "Valve_Condition", "Internal_Pump_Leakage", "Hydraulic_Accumulator", "Stable_Flag"]
-    window_size = 10
-    scaler = MinMaxScaler()
-    features_normalized =df.drop(columns=target_col_name)
-    labels = df[specif_target].values
-    sequences = []
-    next_labels = []
-    for i in range(len(features_normalized) - window_size):
-        sequence = features_normalized[i:i + window_size]
-        label = labels[i + window_size]
-        sequences.append(sequence)
-        next_labels.append(label)
-    X = np.array(sequences)
-    y_test= np.array(next_labels)
-    X_test = np.reshape(X, (X.shape[0], window_size, X.shape[2]))
-    model=load_model(f"lstm_model_{specif_target}.keras")
-    y_pred = model.predict(X_test)
-    #y_pred = (y_pred_prob > 0.5).astype(int)
-    accuracy =accuracy_score(y_test, y_pred)
-    return y_pred,accuracy
+    target = re.sub(pattern, '', normalized_path)
+    features_col_name = df_test.columns.difference([target])
+    window_size = 96
+    predictions = {}
+
+    for machine_id in df_test['id'].unique():
+        machine_df = df_test[df_test['id'] == machine_id]
+        machine_test = gen_sequence(machine_df, window_size, features_col_name)
+        m_pred = model.predict(machine_test)
+        failure_prob = list(m_pred[-1] * 100)[0]
+        predictions[machine_id] = failure_prob
+    return predictions
+ 
+# dataset ='./static/datasets/original.xlsx'
+modelfile ='./static/models/sensors_lstm_model_label_bc.keras'
+# df = pd.read_excel(dataset)
+# print(df)
+y_test,y_pred,accuracy_train,accuracy_test = main('sensors.xlsx','label_bc')
+df_test = './static/datasets/sensors1.xlsx'
+df_test = pd.read_excel(df_test)
+# print(df_test)
+print(predict_code(df_test,modelfile))

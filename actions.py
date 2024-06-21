@@ -25,7 +25,8 @@ def get_models(filename):
     matching_files = glob.glob(search_pattern)
     results = []
     for file_path in matching_files:
+        normalized_path = os.path.normpath(file_path).replace(os.path.sep, '/')
         file_name = os.path.basename(file_path)
-        results.append({"file": file_name, "path": file_path})
+        results.append({"file": file_name, "path": normalized_path})
   
     return results
