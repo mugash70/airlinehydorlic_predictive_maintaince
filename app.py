@@ -2,11 +2,19 @@ from flask import Flask,render_template,request,jsonify
 import actions
 import core
 import pandas as pd
+from config import Config
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 
-
-
+app.config.from_object(Config)
+def convert_keys_to_str(d):
+    """ Recursively convert dictionary keys to strings. """
+    if isinstance(d, dict):
+        return {str(k): convert_keys_to_str(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return [convert_keys_to_str(i) for i in d]
+    else:
+        return d
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -19,8 +27,17 @@ def upload_file():
         return jsonify({'error': 'No selected file'})
     try:
         df = pd.read_excel(file)
-        predicted =  core.predict_code(df,selected_model)
-        return jsonify({'filename': file.filename, 'columns': df.columns.tolist()})
+        predictions =  core.predict_code(df,selected_model)
+        columns_list = df.columns.astype(str).tolist()
+        predictions = {str(k): float(v) for k, v in predictions.items()}
+
+        response_data = {
+            'filename': file.filename,
+            'columns': columns_list,
+            'predictions': predictions
+        }
+        print(response_data)
+        return response_data
     except Exception as e:
         return jsonify({'error': str(e)})
 

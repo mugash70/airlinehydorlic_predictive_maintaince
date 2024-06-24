@@ -4,7 +4,10 @@
         display: none; /* Hide spinner by default */
         width: 8rem; /* Increase spinner size */
         height: 8rem; 
-    }
+    };
+    .table-title {
+            margin-bottom: 0; /* Align with button */
+        }
 </style>
 <div class="container mt-4">
   
@@ -47,8 +50,8 @@
                         </div>
                         <!-- <button class="btn btn-primary" onclick=" Train_modal(filename,sensor)">Train</button> -->
                         <div class="row justify-content-around">
-                        <button class="btn btn-danger col-4" onclick="Train_modal(document.getElementById('datasetSelect').value, document.getElementById('sensorSelect').value)">Train</button>
-                        <button class="btn btn-dark col-4" onclick="start_predict_modal(document.getElementById('modelsSelect').value, document.getElementById('sensorSelect').value)">Predict</button>
+                        <button id="trainButton" class="btn btn-danger col-4" onclick="Train_modal(document.getElementById('datasetSelect').value, document.getElementById('sensorSelect').value)">Train</button>
+                        <button id="predictButton" class="btn btn-dark col-4" onclick="start_predict_modal(document.getElementById('modelsSelect').value, document.getElementById('sensorSelect').value)">Upload new Data</button>
                         </div>
                     </div>
                     </div>
@@ -67,7 +70,7 @@
                                     <form id="uploadForm" enctype="multipart/form-data">
                                         <input class="form-control form-control-lg" class="form-control form-control-lg" type="file" id="fileInput" name="fileInput" accept=".xlsx">
                                         <br/>
-                                        <button class="btn btn-dark col-6 mx-auto" type="button" onclick="uploadFile()">Upload</button>
+                                        <button class="btn btn-dark col-6 mx-auto" type="button" onclick="uploadFile()">Predict</button>
                                     </form>
                                 </div>
 
@@ -76,7 +79,8 @@
                                         <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
                                     </div>
                                     <br/>
-                                    <div id="progress" class="mb-4"></div>
+                                    <div id="progress" class="mb-4">
+                                    </div>
                                 </div>
                             </div>
                 </div>
@@ -93,31 +97,115 @@
                 </div>
             </div>
 
-            <div class="row mb-4">
-                <div class="card shadow  h-100" style="padding: 10%;">
-                    <div class="card-body">
-                        <h5 class="card-title">Card Title 5</h5>
-                        <p class="card-text">This is some text within a card body.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="row">
-                <div class="card shadow  h-100" style="padding: 10%;">
-                    <div class="card-body">
-                        <h5 class="card-title">Card Title 6</h5>
-                        <p class="card-text">This is some text within a card body.</p>
-                    </div>
-                </div>
-            </div>
   </div>
 </div>
 
 <script>
+    function exportTableToCSV(filename) {
+    var csv = [];
+    var rows = document.querySelectorAll("#predictionsTable tr");
 
+    for (var i = 0; i < rows.length; i++) {
+        var row = [], cols = rows[i].querySelectorAll("td, th");
+
+        for (var j = 0; j < cols.length; j++) {
+            var cellText = cols[j].textContent.replace(/,/g, ''); // Remove commas from cells
+            row.push('"' + cellText + '"');
+        }
+
+        csv.push(row.join(","));
+    }
+
+    // Download CSV file
+    var csvContent = csv.join("\n");
+    var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+    if (navigator.msSaveBlob) { // IE 10+
+        navigator.msSaveBlob(blob, filename);
+    } else {
+        var link = document.createElement("a");
+        if (link.download !== undefined) {
+            var url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }
+}
+
+function drawTable(predictions,Title) {
+    document.getElementById('upload_pred').style.display = 'none';
+    var progressDiv = document.getElementById("progress");
+
+    // Clear the existing content
+    progressDiv.innerHTML = ""; 
+
+    var headerDiv = document.createElement("div");
+    headerDiv.className = "d-flex justify-content-between align-items-center mb-2";
+
+    var title = document.createElement("h6");
+    title.textContent = "Predictions using  " + Title +" Dataset";
+    title.className = "table-title"; // Add a class for styling
+
+    var exportButton = document.createElement("button");
+    exportButton.textContent = "Export to CSV";
+    exportButton.className = "btn btn-primary ";
+    exportButton.onclick = function() {
+        exportTableToCSV(Title + "_predictions.csv");
+    };
+
+    title.style.marginRight = "10px"; 
+    
+     // Append title and button to headerDiv
+     headerDiv.appendChild(title);
+    headerDiv.appendChild(exportButton);
+
+
+    // Create a table element
+    var table = document.createElement("table");
+    table.className = "table table-striped";
+    table.id = "predictionsTable"; // Assign an ID for the table for export
+
+
+    // Create table header
+    var thead = table.createTHead();
+    var headerRow = thead.insertRow(0);
+    var cell1 = headerRow.insertCell(0);
+    var cell2 = headerRow.insertCell(1);
+    cell1.textContent = "Sensor ID";
+    cell2.textContent = "Failure Probability in next (30 days)";
+
+    // Create table body
+    var tbody = table.createTBody();
+
+    // Populate table rows
+    for (var machineID in predictions) {
+        var failureProb = predictions[machineID];
+        var row = tbody.insertRow();
+        var cell1 = row.insertCell(0);
+        var cell2 = row.insertCell(1);
+        cell1.textContent = machineID;
+        cell2.textContent = failureProb.toFixed(2) + " %"; // Format to 2 decimal places
+    }
+    // var exportButton = document.createElement("button");
+    // exportButton.textContent = "Export to CSV";
+    // exportButton.className = "btn btn-primary my-2";
+    // exportButton.onclick = function() {
+    //     exportTableToCSV(filename + "_predictions.csv");
+    // };
+
+    // Append table to progress div
+    progressDiv.appendChild(headerDiv);
+    progressDiv.appendChild(table);
+}
 function uploadFile() {
+    document.getElementById('trainButton').disabled = true;
+    document.getElementById('predictButton').disabled = true;
     var modelsSelect = document.getElementById("modelsSelect");
     var selectedModel = modelsSelect.value;
-    
     var fileInput = document.getElementById('fileInput');
     var file = fileInput.files[0];
     var fileInput = document.getElementById('fileInput');
@@ -127,6 +215,10 @@ function uploadFile() {
                 var formData = new FormData();
                 formData.append('file', file);
                 formData.append('selectedModel', selectedModel);
+
+                document.getElementById('upload_pred').style.display = 'none';
+                document.getElementById('spinner').style.display = 'block';
+
                 fetch('/upload', {
                     method: 'POST',
                     body: formData
@@ -134,9 +226,16 @@ function uploadFile() {
                 .then(response => response.json())
                 .then(data => {
                     console.log('File uploaded:', data.filename);
+                    drawTable(data.predictions,data.filename);
                 })
                 .catch(error => {
                     console.error('Error:', error);
+                }) 
+                .finally(() => {
+                    document.getElementById('spinner').style.display = 'none';
+                    // document.getElementById('upload_pred').style.display = 'block';
+                    document.getElementById('predictButton').disabled = false;
+                    document.getElementById('trainButton').disabled = false;
                 });
             } else {
                 alert("Please select a file.");
@@ -144,6 +243,8 @@ function uploadFile() {
 }
 
 function start_predict_modal(){
+    document.getElementById('trainButton').disabled = true;
+    document.getElementById('predictButton').disabled = true;
     var modelsSelect = document.getElementById("modelsSelect");
 
     if (modelsSelect && modelsSelect.value !== "") {
@@ -177,6 +278,8 @@ function Train_modal(filename, sensor) {
                 document.getElementById("progress").innerText = progressUpdate;
             }
         }
+        document.getElementById('predictButton').disabled = false;
+        document.getElementById('trainButton').disabled = false;
     };
 
     // Send request to start training
@@ -185,11 +288,21 @@ function Train_modal(filename, sensor) {
 
     function getSensor(filename) {
         document.getElementById("progress").innerText =''
+        document.getElementById('trainButton').disabled = true;
+        document.getElementById('predictButton').disabled = true;
+        var spinner = document.createElement('div');
+        spinner.classList.add('spinner-border', 'text-primary');
+        spinner.setAttribute('role', 'status');
+        spinner.style.width = '3rem';
+        spinner.style.height = '3rem';
+        document.getElementById('progress').appendChild(spinner);
+
         var xhr = new XMLHttpRequest();
         xhr.open("POST", "/", true);
         xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
         xhr.onreadystatechange = function() {
             if (xhr.readyState == XMLHttpRequest.DONE && xhr.status == 200) {
+                document.getElementById('progress').removeChild(spinner);
                 var response = JSON.parse(xhr.responseText);
                 var sensorsColumns  = response.sensors.columns;
                 var modelsColumns  = response.models;
@@ -197,6 +310,8 @@ function Train_modal(filename, sensor) {
                 populateSensorSelect(sensorsColumns,"sensorSelect");
                 populateSensorSelect(modelsColumns ,"modelsSelect");
             }
+            document.getElementById('predictButton').disabled = false;
+            document.getElementById('trainButton').disabled = false;
         };
         var data = "datasetSelect=" + encodeURIComponent(filename);
         xhr.send(data);
