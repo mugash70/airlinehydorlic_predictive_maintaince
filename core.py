@@ -83,8 +83,8 @@ def main (filename,target):
     features_col_name =features_col_name = df.columns.difference([target,'id'])  
     target_col_name= target
     df[features_col_name]=scaler.fit_transform(df[features_col_name])
-    # if 'id' not in df.columns:
-    #     df['id'] = range(1, len(df) + 1)
+    if 'id' not in df.columns:
+        df['id'] = range(1, len(df) + 1)
     df_x = [gen_sequence(df[df['id'] == id], window_size, features_col_name) for id in df['id'].unique()]
     X = np.concatenate(df_x, axis=0)
     df_y = [gen_label(df[df['id'] == id], window_size, features_col_name, target_col_name) for id in df['id'].unique()]
